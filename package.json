@@ -1,0 +1,23 @@
+{
+  "name": "smart-healthcare-access",
+  "version": "1.0.0",
+  "description": "Smart Healthcare Access System prototype",
+  "main": "app.js",
+  "scripts": {
+    "dev": "live-server --open=./index.html",
+    "server": "node server.js",
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.6.1"
+  }
+}
