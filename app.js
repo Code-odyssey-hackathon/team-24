@@ -1,5 +1,6 @@
 // ==================== DATA STATE ====================
 let HOSPITALS = []; 
+let MAP_HOSPITALS = []; // For hospitals found on the map (OSM)
 let bookings = [];
 let selectedHospitalId = null;
 let lastToken = null;
@@ -221,7 +222,41 @@ function renderHospitalDetails() {
 // ==================== BOOKING ====================
 function renderBookingPage() {
   const h = HOSPITALS.find(x => x.id === selectedHospitalId);
-  document.getElementById('bookingHospitalName').textContent = h ? '🏥 ' + h.name : '';
+  const select = document.getElementById('bookingHospitalSelect');
+  if (select) {
+    select.innerHTML = '<option value="">-- Select Hospital --</option>';
+    
+    // Combine backend hospitals and map hospitals
+    // Use a Map to ensure unique names
+    const allUnique = new Map();
+    
+    HOSPITALS.forEach(hosp => allUnique.set(hosp.name, hosp));
+    MAP_HOSPITALS.forEach(hosp => {
+      if (!allUnique.has(hosp.name)) {
+        allUnique.set(hosp.name, hosp);
+      }
+    });
+
+    let list = Array.from(allUnique.values());
+    
+    // Sort by distance if GPS is active
+    if (gpsActive) {
+      list.sort((a, b) => {
+        const distA = a.distance !== undefined ? a.distance : 999;
+        const distB = b.distance !== undefined ? b.distance : 999;
+        return distA - distB;
+      });
+    }
+    
+    list.forEach(hosp => {
+      const opt = document.createElement('option');
+      opt.value = hosp.name;
+      const distStr = hosp.distance !== undefined ? ` (${hosp.distance} km)` : '';
+      opt.textContent = `${hosp.name}${distStr}`;
+      if (h && hosp.id === h.id) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
 }
 
 async function handleBooking(e) {
@@ -229,13 +264,13 @@ async function handleBooking(e) {
   const name = document.getElementById('patientName').value;
   const phone = document.getElementById('patientPhone').value;
   const dept = document.getElementById('patientDept').value;
-  const h = HOSPITALS.find(x => x.id === selectedHospitalId) || HOSPITALS[0];
+  const hospitalName = document.getElementById('bookingHospitalSelect').value;
 
   const bookingData = {
     patientName: name,
     patientPhone: phone,
     patientDept: dept,
-    hospitalName: h.name
+    hospitalName: hospitalName
   };
 
   try {
@@ -261,7 +296,7 @@ async function handleBooking(e) {
     const reportTime = new Date(now.getTime() + 60 * 60000);
     const timeStr = reportTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    lastToken = { tokenNum, name, phone, dept, hospital: h.name, reportTime: timeStr, date: now.toLocaleDateString() };
+    lastToken = { tokenNum, patientName: name, patientPhone: phone, patientDept: dept, hospitalName: hospitalName, reportTime: timeStr, date: now.toLocaleDateString() };
     bookings.push(lastToken);
     document.getElementById('bookingForm').reset();
     document.getElementById('statTokens').textContent = bookings.length;
@@ -274,14 +309,14 @@ function renderConfirmation() {
   document.getElementById('tokenDetails').innerHTML = `
     <div class="token-detail-row"><span class="token-detail-label">${t('tokenNumber')}</span><span class="token-detail-value">${lastToken.tokenNum}</span></div>
     <div class="token-detail-row"><span class="token-detail-label">${t('reportingTime')}</span><span class="token-detail-value">${lastToken.reportTime}</span></div>
-    <div class="token-detail-row"><span class="token-detail-label">${t('hospitalName')}</span><span class="token-detail-value">${lastToken.hospital}</span></div>
-    <div class="token-detail-row"><span class="token-detail-label">${t('department')}</span><span class="token-detail-value">${lastToken.dept}</span></div>
+    <div class="token-detail-row"><span class="token-detail-label">${t('hospitalName')}</span><span class="token-detail-value">${lastToken.hospitalName}</span></div>
+    <div class="token-detail-row"><span class="token-detail-label">${t('department')}</span><span class="token-detail-value">${lastToken.patientDept}</span></div>
   `;
 }
 
 function downloadToken() {
   if (!lastToken) return;
-  const text = `SMART HEALTHCARE\nToken: ${lastToken.tokenNum}\nPatient: ${lastToken.name}\nPhone: ${lastToken.phone}\nHospital: ${lastToken.hospital}\nDept: ${lastToken.dept}\nTime: ${lastToken.reportTime}\nDate: ${lastToken.date}\nCall 108 for Emergency`;
+  const text = `SMART HEALTHCARE\nToken: ${lastToken.tokenNum}\nPatient: ${lastToken.patientName}\nPhone: ${lastToken.patientPhone}\nHospital: ${lastToken.hospitalName}\nDept: ${lastToken.patientDept}\nTime: ${lastToken.reportTime}\nDate: ${lastToken.date}\nCall 108 for Emergency`;
   const blob = new Blob([text], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -403,11 +438,22 @@ function fetchHospitals(lat, lon) {
   .then(data => {
     const listDiv = document.getElementById("list");
     listDiv.innerHTML = "<h3>Hospital List</h3>";
+    MAP_HOSPITALS = []; // Reset map hospitals
 
     data.elements.forEach(h => {
       if(h.lat && h.lon){
-
         const name = h.tags?.name || "Unnamed Hospital";
+        const dist = (userLat && userLng) ? haversineKm(userLat, userLng, h.lat, h.lon) : undefined;
+        
+        // Add to map state
+        MAP_HOSPITALS.push({
+          id: 'osm-' + h.id,
+          name: name,
+          lat: h.lat,
+          lng: h.lon,
+          distance: dist,
+          type: 'map-discovered'
+        });
 
         // Add marker
         L.marker([h.lat, h.lon])
@@ -420,8 +466,7 @@ function fetchHospitals(lat, lon) {
 
         card.innerHTML = `
           <h4 style="margin-bottom:10px;">🏥 ${name}</h4>
-          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:5px;">📍 Latitude: ${h.lat}</p>
-          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:10px;">📍 Longitude: ${h.lon}</p>
+          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:5px;">📍 Distance: ${dist !== undefined ? dist + ' km' : 'Calculating...'}</p>
           <button class="btn btn-primary btn-sm" onclick="goToHospital(${h.lat}, ${h.lon})">
             View on Map
           </button>
@@ -493,6 +538,7 @@ async function triggerSmartEmergency() {
   document.getElementById('btnCallEnd').style.display = 'none';
   document.getElementById('callDuration').textContent = '00:00';
   document.getElementById('dispatchLog').innerHTML = '';
+  document.getElementById('bookingAbandonBtn').textContent = 'ABANDON EMERGENCY';
   
   const assignedHospitalEl = document.getElementById('assignedHospitalName');
   const dispatchMessageEl = document.getElementById('dispatchMessage');
@@ -505,52 +551,50 @@ async function triggerSmartEmergency() {
   // 1. Popup Notification
   alert("🚨 Emergency detected. The patient requires immediate hospitalization.");
 
-  // 2. Fetch/Filter Unique Nearby Hospitals (10km)
-  try {
-    const res = await fetch('/api/hospitals');
-    if (!res.ok) throw new Error('Fetch failed');
-    let allHospitals = await res.json();
-    
-    // Ensure uniqueness by name
-    const uniqueMap = new Map();
-    allHospitals.forEach(h => {
-      if (!uniqueMap.has(h.name)) {
-        // Calculate distance if GPS is active
-        if (gpsActive && userLat && userLng) {
-          h.distance = haversineKm(userLat, userLng, h.lat, h.lng);
-        }
-        uniqueMap.set(h.name, h);
-      }
-    });
-    
-    // Filter by 10km radius
-    let nearby = Array.from(uniqueMap.values()).filter(h => h.distance <= 10);
-    
-    if (nearby.length === 0) {
-      // If none within 10km, just take the nearest 3 unique ones for demo
-      nearby = Array.from(uniqueMap.values()).sort((a,b) => a.distance - b.distance).slice(0, 3);
+  // 2. Combine all sources (Backend + Map)
+  const uniqueMap = new Map();
+  
+  // Add backend hospitals
+  HOSPITALS.forEach(h => {
+    if (gpsActive && userLat && userLng && h.distance === undefined) {
+      h.distance = haversineKm(userLat, userLng, h.lat, h.lng);
     }
+    uniqueMap.set(h.name, h);
+  });
+  
+  // Add map hospitals
+  MAP_HOSPITALS.forEach(h => {
+    if (!uniqueMap.has(h.name)) {
+      uniqueMap.set(h.name, h);
+    }
+  });
+  
+  let allHospitals = Array.from(uniqueMap.values());
+  
+  // Filter by 10km radius if GPS is active, or just take first few if not
+  let nearby = gpsActive ? allHospitals.filter(h => h.distance <= 10) : allHospitals.slice(0, 8);
+  
+  if (nearby.length === 0 && allHospitals.length > 0) {
+    nearby = allHospitals.sort((a,b) => (a.distance||0) - (b.distance||0)).slice(0, 5);
+  }
 
-    // 3. Render Initial List (Pending)
-    hospitalListEl.innerHTML = nearby.map(h => `
-      <div class="emerg-hospital-item" id="hosp-${h._id || h.id}">
-        <span>🏥 ${h.name} (${h.distance} km)</span>
-        <span class="status-pending">WAITING...</span>
-      </div>
-    `).join('');
+  // 3. Render Initial List (Pending)
+  hospitalListEl.innerHTML = nearby.map(h => `
+    <div class="emerg-hospital-item" id="hosp-${h._id || h.id || Math.random()}">
+      <span>🏥 ${h.name} ${h.distance !== undefined ? '(' + h.distance + ' km)' : ''}</span>
+      <span class="status-pending">WAITING...</span>
+    </div>
+  `).join('');
 
-    // 4. Update assigned hospital (Nearest)
-    const nearest = nearby.sort((a,b) => a.distance - b.distance)[0];
+  // 4. Update assigned hospital (Nearest)
+  if (nearby.length > 0) {
+    const nearest = nearby.sort((a,b) => (a.distance||0) - (b.distance||0))[0];
     assignedHospitalEl.textContent = `TARGET: ${nearest.name.toUpperCase()}`;
     dispatchMessageEl.textContent = `Awaiting voice confirmation to dispatch ambulance...`;
-
-    // 5. Update live location display
-    document.getElementById('liveLocationCoords').textContent = gpsActive ? `${userLat.toFixed(4)}, ${userLng.toFixed(4)}` : 'UNKNOWN';
-
-  } catch (err) {
-    console.error('Emergency trigger failed:', err);
-    assignedHospitalEl.textContent = 'CONNECTION ERROR';
   }
+
+  // 5. Update live location display
+  document.getElementById('liveLocationCoords').textContent = gpsActive ? `${userLat.toFixed(4)}, ${userLng.toFixed(4)}` : 'UNKNOWN';
 }
 
 function startEmergencyCall() {
@@ -613,6 +657,7 @@ function endEmergencyCall() {
   document.getElementById('emergHospitalList').innerHTML = '';
   document.getElementById('assignedHospitalName').textContent = 'CALL TERMINATED';
   document.getElementById('dispatchMessage').textContent = 'Emergency session closed.';
+  document.getElementById('bookingAbandonBtn').textContent = 'BACK TO HOME';
 }
 
 function addLogEntry(msg) {

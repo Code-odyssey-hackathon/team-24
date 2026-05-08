@@ -240,8 +240,13 @@
         <h1 class="page-title" data-i18n="bookingTitle">Book Your Token</h1>
       </div>
       <div class="booking-container">
-        <div class="booking-hospital-badge" id="bookingHospitalName"></div>
         <form class="booking-form" id="bookingForm">
+          <div class="form-group">
+            <label class="form-label" data-i18n="hospitalName">Hospital Name</label>
+            <select id="bookingHospitalSelect" class="form-input" required>
+              <option value="">-- Select Hospital --</option>
+            </select>
+          </div>
           <div class="form-group">
             <label class="form-label" data-i18n="labelName">Full Name</label>
             <input type="text" id="patientName" class="form-input" data-i18n-placeholder="placeholderName" placeholder="Enter your full name" required />
@@ -368,7 +373,7 @@
         </div>
 
         <div class="emerg-actions">
-          <button class="btn btn-outline btn-full" onclick="window.location.hash='#home'">ABANDON EMERGENCY</button>
+          <button id="bookingAbandonBtn" class="btn btn-outline btn-full" onclick="window.location.hash='#home'">ABANDON EMERGENCY</button>
         </div>
       </div>
     </section>
