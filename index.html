@@ -13,6 +13,10 @@
 </head>
 <body>
 
+  <!-- ===== CYBERPUNK OVERLAYS ===== -->
+  <div class="cyber-scanline"></div>
+  <div class="cyber-glitch-overlay"></div>
+
   <!-- ===== LOADING OVERLAY ===== -->
   <div id="loadingOverlay" class="loading-overlay">
     <div class="loader-ring"></div>
@@ -342,25 +346,47 @@
         <div class="dispatch-alert">
           <div class="dispatch-icon">🚑</div>
           <div class="dispatch-info">
-            <h2 id="assignedHospitalName">Identifying Nearest Hospital...</h2>
-            <p id="dispatchMessage">Calculating fastest route based on traffic and distance...</p>
-            <div class="eta-badge">ESTIMATED ETA: <span id="emergEta">--</span> MINS</div>
+            <h2 id="assignedHospitalName">SCANNING NETWORK...</h2>
+            <p id="dispatchMessage">Waiting for connection...</p>
+            <div id="etaWrapper" style="display:none;" class="eta-badge">AMBULANCE ETA: <span id="emergEta">--</span> MINS</div>
           </div>
         </div>
 
-        <div class="hospital-status-list">
-          <h3>🏥 Hospital Confirmations</h3>
-          <div id="emergHospitalList" class="emerg-status-grid">
-            <!-- Rendered by JS -->
+        <!-- Call Control Center -->
+        <div class="call-control-center">
+          <div class="call-timer-box">
+            <span class="timer-label">CALL DURATION</span>
+            <span id="callDuration" class="timer-value">00:00</span>
+          </div>
+          <div class="call-buttons">
+            <button id="btnCallNow" class="btn btn-success btn-lg" onclick="startEmergencyCall()">📞 CALL NOW</button>
+            <button id="btnCallEnd" class="btn btn-danger btn-lg" style="display:none;" onclick="endEmergencyCall()">✖ END CALL</button>
+          </div>
+        </div>
+
+        <div id="emergencyDetailsArea" style="display:none;">
+          <div class="live-location-badge">
+            <span class="pulse-dot"></span> LIVE LOCATION: <span id="liveLocationCoords">Detecting...</span>
+          </div>
+
+          <div class="dispatch-log-box">
+            <h3>📂 DISPATCH LOG</h3>
+            <div id="dispatchLog" class="dispatch-log-content">
+              <!-- Logs will appear here -->
+            </div>
+          </div>
+
+          <div class="hospital-status-list">
+            <h3>🏥 NEARBY HOSPITALS (< 10KM)</h3>
+            <div id="emergHospitalList" class="emerg-status-grid">
+              <!-- Rendered by JS -->
+            </div>
           </div>
         </div>
 
         <div class="emerg-actions">
-          <a href="tel:108" class="btn btn-danger btn-lg btn-full">📞 CALL DISPATCH (108)</a>
-          <button class="btn btn-outline btn-full" onclick="window.location.hash='#home'">CANCEL EMERGENCY</button>
+          <button class="btn btn-outline btn-full" onclick="window.location.hash='#home'">ABANDON EMERGENCY</button>
         </div>
-        
-        <p class="emerg-note">Other hospitals have been notified that a vehicle is on the way from the nearest center.</p>
       </div>
     </section>
 

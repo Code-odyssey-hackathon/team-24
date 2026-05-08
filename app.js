@@ -479,75 +479,149 @@ function speakPage() {
 function openEmergencyModal() { document.getElementById('emergencyModal').classList.add('show'); }
 function closeEmergencyModal() { document.getElementById('emergencyModal').classList.remove('show'); }
 
+let callTimer = null;
+let callSeconds = 0;
+
 async function triggerSmartEmergency() {
   closeEmergencyModal();
   showPage('emergency-status');
   
+  // Reset UI
+  document.getElementById('emergencyDetailsArea').style.display = 'none';
+  document.getElementById('etaWrapper').style.display = 'none';
+  document.getElementById('btnCallNow').style.display = 'block';
+  document.getElementById('btnCallEnd').style.display = 'none';
+  document.getElementById('callDuration').textContent = '00:00';
+  document.getElementById('dispatchLog').innerHTML = '';
+  
   const assignedHospitalEl = document.getElementById('assignedHospitalName');
   const dispatchMessageEl = document.getElementById('dispatchMessage');
-  const etaEl = document.getElementById('emergEta');
   const hospitalListEl = document.getElementById('emergHospitalList');
   
-  assignedHospitalEl.textContent = '📡 Broadcasting to All Hospitals...';
+  assignedHospitalEl.textContent = '📡 SCANNING AREA...';
+  dispatchMessageEl.textContent = 'Detecting nearby medical facilities within 10km...';
   hospitalListEl.innerHTML = '';
-  
-  // Collect data
-  const payload = {
-    patientLat: userLat,
-    patientLng: userLng,
-    patientPhone: '9999999999' // In a real app, this would come from user profile
-  };
 
+  // 1. Popup Notification
+  alert("🚨 Emergency detected. The patient requires immediate hospitalization.");
+
+  // 2. Fetch/Filter Unique Nearby Hospitals (10km)
   try {
-    const res = await fetch('/api/emergency', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const res = await fetch('/api/hospitals');
+    if (!res.ok) throw new Error('Fetch failed');
+    let allHospitals = await res.json();
+    
+    // Ensure uniqueness by name
+    const uniqueMap = new Map();
+    allHospitals.forEach(h => {
+      if (!uniqueMap.has(h.name)) {
+        // Calculate distance if GPS is active
+        if (gpsActive && userLat && userLng) {
+          h.distance = haversineKm(userLat, userLng, h.lat, h.lng);
+        }
+        uniqueMap.set(h.name, h);
+      }
     });
-
-    const data = await res.json();
     
-    if (res.ok) {
-      // 1. Show all hospitals as confirmed
-      hospitalListEl.innerHTML = data.allHospitals.map(name => `
-        <div class="emerg-hospital-item">
-          <span>🏥 ${name}</span>
-          <span class="status-confirmed">✅ APPOINTMENT CONFIRMED</span>
-        </div>
-      `).join('');
-
-      // 2. Assign the nearest hospital
-      assignedHospitalEl.textContent = `🚑 ${data.assignedHospital}`;
-      dispatchMessageEl.textContent = `Nearest hospital has accepted and dispatched an emergency vehicle. Traffic coordination in progress.`;
-      etaEl.textContent = data.eta;
-      
-      // Notify other hospitals (simulated)
-      setTimeout(() => {
-        const note = document.createElement('div');
-        note.className = 'info-toast';
-        note.textContent = 'All other hospitals have been notified of the active dispatch.';
-        document.body.appendChild(note);
-        setTimeout(() => note.remove(), 3000);
-      }, 2000);
-
-    } else {
-      throw new Error(data.error || 'Broadcast failed');
+    // Filter by 10km radius
+    let nearby = Array.from(uniqueMap.values()).filter(h => h.distance <= 10);
+    
+    if (nearby.length === 0) {
+      // If none within 10km, just take the nearest 3 unique ones for demo
+      nearby = Array.from(uniqueMap.values()).sort((a,b) => a.distance - b.distance).slice(0, 3);
     }
-  } catch (err) {
-    console.warn('Smart Emergency API failed, using fallback', err);
-    // Fallback logic
-    const nearest = HOSPITALS.sort((a,b) => a.distance - b.distance)[0] || HOSPITALS[0];
-    assignedHospitalEl.textContent = `🚑 ${nearest.name}`;
-    dispatchMessageEl.textContent = `Emergency vehicle dispatched. Approaching via fastest route.`;
-    etaEl.textContent = '8';
-    
-    hospitalListEl.innerHTML = HOSPITALS.map(h => `
-      <div class="emerg-hospital-item">
-        <span>🏥 ${h.name}</span>
-        <span class="status-confirmed">✅ APPOINTMENT CONFIRMED</span>
+
+    // 3. Render Initial List (Pending)
+    hospitalListEl.innerHTML = nearby.map(h => `
+      <div class="emerg-hospital-item" id="hosp-${h._id || h.id}">
+        <span>🏥 ${h.name} (${h.distance} km)</span>
+        <span class="status-pending">WAITING...</span>
       </div>
     `).join('');
+
+    // 4. Update assigned hospital (Nearest)
+    const nearest = nearby.sort((a,b) => a.distance - b.distance)[0];
+    assignedHospitalEl.textContent = `TARGET: ${nearest.name.toUpperCase()}`;
+    dispatchMessageEl.textContent = `Awaiting voice confirmation to dispatch ambulance...`;
+
+    // 5. Update live location display
+    document.getElementById('liveLocationCoords').textContent = gpsActive ? `${userLat.toFixed(4)}, ${userLng.toFixed(4)}` : 'UNKNOWN';
+
+  } catch (err) {
+    console.error('Emergency trigger failed:', err);
+    assignedHospitalEl.textContent = 'CONNECTION ERROR';
   }
+}
+
+function startEmergencyCall() {
+  document.getElementById('btnCallNow').style.display = 'none';
+  document.getElementById('btnCallEnd').style.display = 'block';
+  document.getElementById('emergencyDetailsArea').style.display = 'block';
+  document.getElementById('etaWrapper').style.display = 'block';
+  
+  // Start Timer
+  callSeconds = 0;
+  callTimer = setInterval(() => {
+    callSeconds++;
+    const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const secs = String(callSeconds % 60).padStart(2, '0');
+    document.getElementById('callDuration').textContent = `${mins}:${secs}`;
+  }, 1000);
+
+  // Add initial logs
+  addLogEntry('Call established with Emergency Response Center.');
+  addLogEntry('Transmitting live biometric data and GPS coordinates.');
+  
+  // Simulate hospital acceptance
+  setTimeout(() => {
+    const items = document.querySelectorAll('.emerg-hospital-item');
+    items.forEach((item, idx) => {
+      setTimeout(() => {
+        const status = item.querySelector('.status-pending');
+        if (status) {
+          status.className = 'status-confirmed';
+          status.textContent = 'ACCEPTED';
+          addLogEntry(`Notification accepted by ${item.innerText.split('(')[0].trim()}.`);
+        }
+      }, idx * 800);
+    });
+    
+    // Nearest ambulance dispatch
+    setTimeout(() => {
+      const nearestName = document.getElementById('assignedHospitalName').textContent.replace('TARGET: ', '');
+      document.getElementById('dispatchMessage').textContent = `AMBULANCE DISPATCHED FROM ${nearestName}.`;
+      document.getElementById('emergEta').textContent = Math.floor(Math.random() * 5) + 2;
+      addLogEntry(`Vehicle assigned: AMB-99. Deploying from ${nearestName}.`);
+    }, 1500);
+  }, 1000);
+}
+
+function endEmergencyCall() {
+  clearInterval(callTimer);
+  callSeconds = 0;
+  document.getElementById('callDuration').textContent = '00:00';
+  
+  // Hide details as requested
+  document.getElementById('emergencyDetailsArea').style.display = 'none';
+  document.getElementById('etaWrapper').style.display = 'none';
+  document.getElementById('btnCallNow').style.display = 'block';
+  document.getElementById('btnCallEnd').style.display = 'none';
+  
+  addLogEntry('Call terminated by user.');
+  
+  // Reset hospital statuses if needed
+  document.getElementById('emergHospitalList').innerHTML = '';
+  document.getElementById('assignedHospitalName').textContent = 'CALL TERMINATED';
+  document.getElementById('dispatchMessage').textContent = 'Emergency session closed.';
+}
+
+function addLogEntry(msg) {
+  const log = document.getElementById('dispatchLog');
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+  log.prepend(entry);
 }
 
 // ==================== INIT ====================
