@@ -330,6 +330,40 @@
       </div>
     </section>
 
+    <!-- ==================== PAGE: EMERGENCY STATUS ==================== -->
+    <section class="page" id="page-emergency-status">
+      <div class="emergency-status-container">
+        <div class="emerg-header">
+          <div class="emerg-pulse-icon">🚨</div>
+          <h1 class="emerg-title">EMERGENCY BROADCAST ACTIVE</h1>
+          <p class="emerg-subtitle">Appointments have been instantly booked at all nearby hospitals.</p>
+        </div>
+
+        <div class="dispatch-alert">
+          <div class="dispatch-icon">🚑</div>
+          <div class="dispatch-info">
+            <h2 id="assignedHospitalName">Identifying Nearest Hospital...</h2>
+            <p id="dispatchMessage">Calculating fastest route based on traffic and distance...</p>
+            <div class="eta-badge">ESTIMATED ETA: <span id="emergEta">--</span> MINS</div>
+          </div>
+        </div>
+
+        <div class="hospital-status-list">
+          <h3>🏥 Hospital Confirmations</h3>
+          <div id="emergHospitalList" class="emerg-status-grid">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <div class="emerg-actions">
+          <a href="tel:108" class="btn btn-danger btn-lg btn-full">📞 CALL DISPATCH (108)</a>
+          <button class="btn btn-outline btn-full" onclick="window.location.hash='#home'">CANCEL EMERGENCY</button>
+        </div>
+        
+        <p class="emerg-note">Other hospitals have been notified that a vehicle is on the way from the nearest center.</p>
+      </div>
+    </section>
+
     <!-- ==================== PAGE: ADMIN ==================== -->
     <section class="page" id="page-admin">
       <div class="admin-header">
@@ -364,6 +398,10 @@
       <h2 data-i18n="emergencyServices">Emergency Services</h2>
       <p class="modal-emerg-note" data-i18n="emergencyNote">Stay calm. Help is on the way.</p>
       <div class="modal-emerg-btns">
+        <button class="emerg-btn emerg-smart" onclick="triggerSmartEmergency()">
+          <span>⚡</span> <span>SMART EMERGENCY RESPONSE</span>
+          <small>Instant Booking + Ambulance Dispatch</small>
+        </button>
         <a href="tel:108" class="emerg-btn emerg-ambulance">
           <span>🚑</span> <span data-i18n="callAmbulance">Call Ambulance (108)</span>
         </a>

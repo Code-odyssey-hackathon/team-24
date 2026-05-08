@@ -1233,3 +1233,30 @@ h1, h2, h3, h4 {
   .admin-stats-grid { grid-template-columns: 1fr 1fr; }
   .admin-form-grid { grid-template-columns: 1fr; }
 }
+
+/* Emergency Status Page */
+.emergency-status-container { max-width: 600px; margin: 0 auto; padding: 20px; }
+.emerg-header { text-align: center; margin-bottom: 30px; }
+.emerg-pulse-icon { font-size: 4rem; animation: pulse 1.5s infinite; margin-bottom: 15px; }
+.emerg-title { color: var(--danger); font-weight: 800; letter-spacing: 2px; }
+.emerg-subtitle { color: var(--text-muted); }
+
+.dispatch-alert { background: var(--bg-card); border: 2px solid var(--danger); border-radius: 16px; padding: 24px; display: flex; gap: 20px; align-items: center; margin-bottom: 30px; }
+.dispatch-icon { font-size: 3rem; }
+.dispatch-info h2 { margin: 0 0 8px 0; color: var(--white); }
+.dispatch-info p { color: var(--text-muted); margin: 0; }
+.eta-badge { background: var(--danger); color: white; display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 700; margin-top: 10px; }
+
+.emerg-status-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 15px; margin-bottom: 30px; }
+.emerg-hospital-item { background: var(--bg-card); border: 1px solid var(--glass-border); padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+.status-confirmed { color: var(--secondary); font-weight: 700; }
+
+.emerg-btn.emerg-smart { background: linear-gradient(135deg, #ff4d4d, #ff0000); color: white; border: none; flex-direction: column; height: auto; padding: 15px; }
+.emerg-btn.emerg-smart small { font-size: 0.7rem; opacity: 0.9; margin-top: 4px; }
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
