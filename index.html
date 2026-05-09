@@ -281,6 +281,9 @@
           <div class="confirm-icon">✅</div>
         </div>
         <h1 class="confirm-title" data-i18n="bookingConfirmed">Booking Confirmed!</h1>
+        <div id="aiSecurityBadge" class="ai-security-badge verified">
+          <span class="ai-icon">🛡️</span> AI VERIFIED: <span id="aiScoreLabel">GENUINE CASE</span>
+        </div>
         <p class="confirm-sub">Your token has been generated. Please arrive on time.</p>
         <div class="token-card" id="tokenDetails">
           <!-- Rendered by JS -->
@@ -309,6 +312,10 @@
             <span class="rural-btn-icon">🎫</span>
             <span data-i18n="ruralBookToken">Book Token</span>
           </a>
+          <button class="rural-big-btn rural-emergency" style="background: var(--bg-dark); border: 2px dashed var(--danger); grid-column: 1 / -1;" onclick="simulateOfflineEmergency()">
+            <span class="rural-btn-icon">📵</span>
+            <span>OFFLINE AI EMERGENCY OVERRIDE</span>
+          </button>
         </div>
         <div class="rural-info-card">
           <h2 data-i18n="ruralSmsTitle">📱 Book via SMS</h2>
@@ -390,9 +397,23 @@
       <div class="admin-tabs">
         <button class="tab-btn active" data-tab="hospitals" data-i18n="tabHospitals">Hospitals</button>
         <button class="tab-btn" data-tab="bookings" data-i18n="tabBookings">Bookings</button>
+        <button class="tab-btn" data-tab="tasks">Tasks</button>
+        <button class="tab-btn" data-tab="spam">Spam Center</button>
       </div>
       <div id="adminTabContent" class="admin-tab-content">
         <!-- Rendered by JS -->
+      </div>
+
+      <!-- API Connection Settings -->
+      <div class="admin-api-settings">
+        <h3>🔐 Backend Connection</h3>
+        <div class="api-key-group">
+          <input type="password" id="adminApiKey" placeholder="Enter API Key to connect..." />
+          <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Connect</button>
+        </div>
+        <div id="connectionStatus" class="connection-status unauthorized">
+          <span class="status-dot"></span> <span id="statusText">Unauthorized: Please enter API Key</span>
+        </div>
       </div>
     </section>
 
@@ -425,6 +446,26 @@
         <a href="tel:102" class="emerg-btn emerg-medical">
           <span>🏥</span> <span data-i18n="callMedical">Medical Helpline (102)</span>
         </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Threat Analysis Overlay -->
+  <div id="threatAnalysisOverlay" class="threat-overlay">
+    <div class="threat-container">
+      <div class="threat-header">
+        <div class="threat-scanner"></div>
+        <h2>NEURAL THREAT ANALYSIS</h2>
+      </div>
+      <div id="threatLog" class="threat-log">
+        <!-- Logs added by JS -->
+      </div>
+      <div class="threat-footer">
+        <div class="trust-meter-wrapper">
+          <span>TRUST SCORE</span>
+          <div class="trust-meter"><div id="trustFill" class="trust-fill"></div></div>
+          <span id="trustValue">0%</span>
+        </div>
       </div>
     </div>
   </div>

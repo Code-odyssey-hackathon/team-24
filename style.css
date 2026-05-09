@@ -1283,3 +1283,192 @@ h1, h2, h3, h4 {
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
 
+/* AI Security Badge */
+.ai-security-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.85rem;
+  margin: 10px 0;
+  background: rgba(20, 20, 25, 0.8);
+  border: 1px solid var(--glass-border);
+  letter-spacing: 1px;
+}
+.ai-security-badge.verified {
+  border-color: var(--secondary);
+  color: var(--secondary);
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
+}
+.ai-security-badge.warning {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.ai-security-badge.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.ai-icon {
+  font-size: 1.1rem;
+}
+
+/* Priority Badges */
+.priority-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+}
+.priority-badge.low { background: #555; color: #fff; }
+.priority-badge.medium { background: var(--primary); color: #000; }
+.priority-badge.high { background: #ffaa00; color: #000; }
+.priority-badge.emergency { background: var(--danger); color: #fff; box-shadow: 0 0 10px var(--danger-glow); }
+
+.admin-form h3 {
+  margin-bottom: 15px;
+  color: var(--primary);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+select {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  padding: 8px;
+  border-radius: 4px;
+  outline: none;
+}
+select:focus {
+  border-color: var(--primary);
+}
+
+/* Admin API Settings */
+.admin-api-settings {
+  margin-top: 40px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+}
+.api-key-group {
+  display: flex;
+  gap: 10px;
+  margin: 15px 0;
+}
+.api-key-group input {
+  flex: 1;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--glass-border);
+  color: var(--white);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: 10px;
+  border-radius: 6px;
+}
+.connection-status.secure { color: var(--secondary); background: rgba(0, 255, 102, 0.1); }
+.connection-status.unauthorized { color: var(--danger); background: rgba(255, 0, 60, 0.1); }
+
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+.secure .status-dot { animation: pulse 2s infinite; }
+
+/* Threat Analysis Overlay */
+.threat-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: none; /* Shown by JS */
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--font-mono);
+}
+.threat-overlay.show { display: flex; }
+
+.threat-container {
+  width: 90%;
+  max-width: 500px;
+  background: #050505;
+  border: 2px solid var(--danger);
+  box-shadow: 0 0 30px var(--danger-glow);
+  padding: 30px;
+  position: relative;
+  overflow: hidden;
+}
+
+.threat-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.threat-scanner {
+  height: 2px;
+  background: var(--danger);
+  width: 100%;
+  position: absolute;
+  top: 0; left: 0;
+  box-shadow: 0 0 15px var(--danger);
+  animation: scan 3s linear infinite;
+}
+@keyframes scan {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+.threat-log {
+  height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 0, 60, 0.2);
+  padding: 15px;
+  background: rgba(255, 0, 60, 0.05);
+  margin-bottom: 20px;
+}
+.threat-log-entry {
+  font-size: 0.85rem;
+  color: var(--danger);
+  margin-bottom: 5px;
+  opacity: 0;
+  animation: fadeIn 0.3s forwards;
+}
+
+.trust-meter-wrapper {
+  text-align: center;
+}
+.trust-meter {
+  height: 10px;
+  background: #222;
+  border-radius: 5px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+.trust-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--secondary);
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px var(--secondary);
+}
+
+/* Spam Center */
+.spam-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+.spam-badge.banned { background: var(--danger); color: #fff; }
+.spam-badge.trusted { background: var(--secondary); color: #000; }

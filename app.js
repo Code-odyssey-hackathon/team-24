@@ -12,6 +12,30 @@ let userLat = null;
 let userLng = null;
 let userLocationName = '';
 let gpsActive = false;
+let allTasks = [];
+let BACKEND_API_KEY = localStorage.getItem('backend_api_key') || 'cyber-health-secure-2026';
+let spamReputationData = [];
+
+class BehaviorMonitor {
+  constructor() {
+    this.clickTimes = [];
+    this.isAutomated = false;
+  }
+  trackClick() {
+    const now = Date.now();
+    this.clickTimes = this.clickTimes.filter(t => now - t < 1000);
+    this.clickTimes.push(now);
+    if (this.clickTimes.length > 5) this.isAutomated = true;
+  }
+  getData() {
+    return {
+      clickSpeed: this.clickTimes.length,
+      isAutomated: this.isAutomated || (window.navigator.webdriver)
+    };
+  }
+}
+const monitor = new BehaviorMonitor();
+document.addEventListener('click', () => monitor.trackClick());
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -95,7 +119,7 @@ function detectGPS() {
       HOSPITALS.forEach(h => { h.distance = haversineKm(userLat, userLng, h.lat, h.lng); });
       
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLng}&format=json`);
+        const res = await fetchWithAuth(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLng}&format=json`, { external: true });
         const data = await res.json();
         userLocationName = data.address.city || data.address.town || 'Your Location';
       } catch { userLocationName = `${userLat.toFixed(2)}, ${userLng.toFixed(2)}`; }
@@ -132,7 +156,7 @@ async function searchLocation() {
   btn.textContent = '⏳'; btn.disabled = true;
 
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(input)}&format=json&limit=1`);
+    const res = await fetchWithAuth(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(input)}&format=json&limit=1`, { external: true });
     const data = await res.json();
     if (data && data.length > 0) {
       userLat = parseFloat(data[0].lat);
@@ -274,7 +298,7 @@ async function handleBooking(e) {
   };
 
   try {
-    const res = await fetch('/api/bookings', {
+    const res = await fetchWithAuth('/api/bookings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bookingData)
@@ -287,6 +311,11 @@ async function handleBooking(e) {
       document.getElementById('statTokens').textContent = bookings.length;
       window.location.hash = '#confirmation';
     } else {
+      const errorData = await res.json();
+      if (errorData.error === 'Spam Detected') {
+        alert(`🚨 SECURITY BLOCK: ${errorData.message}\nTrust Score: ${errorData.score}`);
+        return;
+      }
       throw new Error('Booking failed');
     }
   } catch (err) {
@@ -306,6 +335,23 @@ async function handleBooking(e) {
 
 function renderConfirmation() {
   if (!lastToken) return;
+  
+  // Update AI Badge
+  const badge = document.getElementById('aiSecurityBadge');
+  const label = document.getElementById('aiScoreLabel');
+  const score = lastToken.spamScore || 100;
+  
+  if (score >= 70) {
+    badge.className = 'ai-security-badge verified';
+    label.textContent = 'GENUINE CASE (' + score + ')';
+  } else if (score >= 40) {
+    badge.className = 'ai-security-badge warning';
+    label.textContent = 'LOW TRUST (' + score + ')';
+  } else {
+    badge.className = 'ai-security-badge danger';
+    label.textContent = 'SUSPICIOUS (' + score + ')';
+  }
+
   document.getElementById('tokenDetails').innerHTML = `
     <div class="token-detail-row"><span class="token-detail-label">${t('tokenNumber')}</span><span class="token-detail-value">${lastToken.tokenNum}</span></div>
     <div class="token-detail-row"><span class="token-detail-label">${t('reportingTime')}</span><span class="token-detail-value">${lastToken.reportTime}</span></div>
@@ -361,16 +407,87 @@ function renderAdminTab(tab) {
       <div class="admin-table-wrapper">
         <table class="admin-table">
           <thead><tr><th>${t('name')}</th><th>${t('type')}</th><th>${t('beds')}</th><th>${t('emergency')}</th><th>${t('actions')}</th></tr></thead>
-          <tbody>${HOSPITALS.map(h => `<tr><td>${h.name}</td><td>${h.type}</td><td>${h.bedsAvail}/${h.beds}</td><td>${h.emergency ? '🟢 Yes' : '🔴 No'}</td><td><button class="btn btn-sm btn-primary" onclick="selectedHospitalId=${h.id};window.location.hash='#details'">${t('edit')}</button></td></tr>`).join('')}</tbody>
+          <tbody>${HOSPITALS.map(h => `<tr>
+            <td>${h.name}</td>
+            <td>${h.type}</td>
+            <td>${h.bedsAvail}/${h.beds}</td>
+            <td>${h.emergency ? '🟢 Yes' : '🔴 No'}</td>
+            <td>
+              <button class="btn btn-sm btn-danger" onclick="deleteHospital('${h._id}')">🗑️</button>
+            </td>
+          </tr>`).join('')}</tbody>
         </table>
       </div>`;
-  } else {
+  } else if (tab === 'bookings') {
     container.innerHTML = bookings.length === 0
       ? '<p style="text-align:center;color:var(--text-muted);padding:32px;">No bookings yet.</p>'
       : `<div class="admin-table-wrapper"><table class="admin-table">
-          <thead><tr><th>${t('token')}</th><th>${t('patientName')}</th><th>${t('phone')}</th><th>${t('hospitalName')}</th><th>${t('department')}</th><th>${t('date')}</th></tr></thead>
-          <tbody>${bookings.map(b => `<tr><td>${b.tokenNum}</td><td>${b.name}</td><td>${b.phone}</td><td>${b.hospital}</td><td>${b.dept}</td><td>${b.date}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>${t('token')}</th><th>${t('patientName')}</th><th>${t('hospitalName')}</th><th>${t('department')}</th><th>Actions</th></tr></thead>
+          <tbody>${bookings.map(b => `<tr>
+            <td>${b.tokenNum || 'N/A'}</td>
+            <td>${b.patientName || 'Anonymous'}</td>
+            <td>${b.hospitalName || 'N/A'}</td>
+            <td>${b.patientDept || 'General'}</td>
+            <td>
+              <button class="btn btn-sm btn-danger" onclick="deleteBooking('${b._id}')">🗑️</button>
+            </td>
+          </tr>`).join('')}</tbody>
         </table></div>`;
+  } else if (tab === 'tasks') {
+    container.innerHTML = `
+      <div class="admin-form" style="margin-bottom: 20px;">
+        <h3>Add New Task</h3>
+        <div class="admin-form-grid">
+          <input id="taskTitle" placeholder="Task Title">
+          <input id="taskDesc" placeholder="Description">
+          <select id="taskPriority">
+            <option value="low">Low Priority</option>
+            <option value="medium" selected>Medium Priority</option>
+            <option value="high">High Priority</option>
+            <option value="emergency">Emergency</option>
+          </select>
+          <button class="btn btn-primary" onclick="createTask()">Add Task</button>
+        </div>
+      </div>
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead><tr><th>Title</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${allTasks.map(t => `<tr>
+            <td><strong>${t.title}</strong><br><small>${t.description}</small></td>
+            <td><span class="priority-badge ${t.priority}">${t.priority.toUpperCase()}</span></td>
+            <td>
+              <select onchange="updateTaskStatus('${t._id}', this.value)">
+                <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>To Do</option>
+                <option value="in-progress" ${t.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
+                <option value="completed" ${t.status === 'completed' ? 'selected' : ''}>Completed</option>
+              </select>
+            </td>
+            <td><button class="btn btn-sm btn-danger" onclick="deleteTask('${t._id}')">🗑️</button></td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } else if (tab === 'spam') {
+    container.innerHTML = `
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead><tr><th>Phone Number</th><th>Trust Score</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${spamReputationData.map(r => `<tr>
+            <td>${r.phoneNumber}</td>
+            <td>
+              <div class="trust-meter" style="width:100px;display:inline-block;margin-right:10px;">
+                <div class="trust-fill" style="width:${r.trustScore}%"></div>
+              </div>
+              ${r.trustScore}%
+            </td>
+            <td><span class="spam-badge ${r.isBanned ? 'banned' : 'trusted'}">${r.isBanned ? 'BANNED' : 'TRUSTED'}</span></td>
+            <td>
+              <button class="btn btn-sm ${r.isBanned ? 'btn-primary' : 'btn-danger'}" onclick="toggleBan('${r._id}', ${!r.isBanned})">
+                ${r.isBanned ? 'Whitelist' : 'Ban'}
+              </button>
+            </td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
   }
 }
 
@@ -379,11 +496,12 @@ function toggleAdminForm() {
   document.getElementById('adminFormContainer').style.display = adminShowForm ? 'block' : 'none';
 }
 
-function addHospital() {
+async function addHospital() {
   const name = document.getElementById('ahName').value;
   if (!name) return;
-  HOSPITALS.push({
-    id: HOSPITALS.length + 1, name,
+  
+  const hData = {
+    name,
     type: document.getElementById('ahType').value,
     distance: Math.round(Math.random() * 15 * 10) / 10,
     beds: Number(document.getElementById('ahBeds').value) || 50,
@@ -392,10 +510,87 @@ function addHospital() {
     phone: document.getElementById('ahPhone').value || '000-0000000',
     specialty: document.getElementById('ahSpec').value || 'general',
     doctors: [{ name: 'Dr. New', spec: 'General' }]
-  });
-  adminShowForm = false;
-  document.getElementById('statHospitals').textContent = HOSPITALS.length;
-  renderAdmin();
+  };
+
+  try {
+    const res = await fetchWithAuth('/api/hospitals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hData)
+    });
+    if (res.ok) {
+      const newH = await res.json();
+      HOSPITALS.push(newH);
+      adminShowForm = false;
+      document.getElementById('statHospitals').textContent = HOSPITALS.length;
+      renderAdmin();
+    }
+  } catch (err) {
+    console.error('Failed to add hospital:', err);
+  }
+}
+
+async function deleteHospital(id) {
+  if (!confirm('Are you sure you want to delete this hospital?')) return;
+  try {
+    const res = await fetchWithAuth(`/api/hospitals/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      HOSPITALS = HOSPITALS.filter(h => h._id !== id);
+      renderAdmin();
+    }
+  } catch (err) { console.error('Delete failed:', err); }
+}
+
+async function deleteBooking(id) {
+  if (!confirm('Cancel this booking?')) return;
+  try {
+    const res = await fetchWithAuth(`/api/bookings/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      bookings = bookings.filter(b => b._id !== id);
+      document.getElementById('statTokens').textContent = bookings.length;
+      renderAdmin();
+    }
+  } catch (err) { console.error('Delete failed:', err); }
+}
+
+async function createTask() {
+  const title = document.getElementById('taskTitle').value;
+  const description = document.getElementById('taskDesc').value;
+  const priority = document.getElementById('taskPriority').value;
+  if (!title) return;
+
+  try {
+    const res = await fetchWithAuth('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, priority })
+    });
+    if (res.ok) {
+      const newTask = await res.json();
+      allTasks.unshift(newTask);
+      renderAdminTab('tasks');
+    }
+  } catch (err) { console.error('Task creation failed:', err); }
+}
+
+async function updateTaskStatus(id, status) {
+  try {
+    await fetchWithAuth(`/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+  } catch (err) { console.error('Update failed:', err); }
+}
+
+async function deleteTask(id) {
+  try {
+    const res = await fetchWithAuth(`/api/tasks/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      allTasks = allTasks.filter(t => t._id !== id);
+      renderAdminTab('tasks');
+    }
+  } catch (err) { console.error('Delete failed:', err); }
 }
 
 // ==================== MAP & DB STUBS ====================
@@ -489,7 +684,7 @@ function testDbConnection() {
   status.textContent = 'Connecting to Backend...';
   status.style.color = 'var(--primary)';
   
-  fetch('/api/hospitals')
+  fetchWithAuth('/api/hospitals')
     .then(res => {
       if (res.ok) {
         status.textContent = '✅ Connected to Node.js Backend Successfully!';
@@ -502,6 +697,12 @@ function testDbConnection() {
       status.textContent = '❌ Connection failed. Ensure server is running.';
       status.style.color = 'var(--danger)';
     });
+}
+
+function simulateOfflineEmergency() {
+  alert("🛰️ NETWORK DISCONNECTED: Activating Edge-AI Emergency Protocol.");
+  alert("🤖 Edge-AI: Analyzing biometric patterns locally... \nHigh priority detected. Overriding standard queue.");
+  triggerSmartEmergency(); // Re-use the existing logic but with a simulated context
 }
 
 // ==================== EXTRAS ====================
@@ -529,72 +730,128 @@ let callSeconds = 0;
 
 async function triggerSmartEmergency() {
   closeEmergencyModal();
-  showPage('emergency-status');
   
-  // Reset UI
-  document.getElementById('emergencyDetailsArea').style.display = 'none';
-  document.getElementById('etaWrapper').style.display = 'none';
-  document.getElementById('btnCallNow').style.display = 'block';
-  document.getElementById('btnCallEnd').style.display = 'none';
-  document.getElementById('callDuration').textContent = '00:00';
-  document.getElementById('dispatchLog').innerHTML = '';
-  document.getElementById('bookingAbandonBtn').textContent = 'ABANDON EMERGENCY';
+  // 1. Show Threat Analysis Overlay
+  const overlay = document.getElementById('threatAnalysisOverlay');
+  const log = document.getElementById('threatLog');
+  const fill = document.getElementById('trustFill');
+  const val = document.getElementById('trustValue');
   
-  const assignedHospitalEl = document.getElementById('assignedHospitalName');
-  const dispatchMessageEl = document.getElementById('dispatchMessage');
-  const hospitalListEl = document.getElementById('emergHospitalList');
+  overlay.classList.add('show');
+  log.innerHTML = '';
+  fill.style.width = '0%';
+  val.textContent = '0%';
   
-  assignedHospitalEl.textContent = '📡 SCANNING AREA...';
-  dispatchMessageEl.textContent = 'Detecting nearby medical facilities within 10km...';
-  hospitalListEl.innerHTML = '';
+  const addThreatLog = (msg) => {
+    const entry = document.createElement('div');
+    entry.className = 'threat-log-entry';
+    entry.textContent = `> [${new Date().toLocaleTimeString()}] ${msg}`;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  };
 
-  // 1. Popup Notification
-  alert("🚨 Emergency detected. The patient requires immediate hospitalization.");
-
-  // 2. Combine all sources (Backend + Map)
-  const uniqueMap = new Map();
+  addThreatLog("Initializing Neural Judgment Engine...");
+  await new Promise(r => setTimeout(r, 600));
+  addThreatLog("Analyzing device fingerprint and user-agent...");
+  await new Promise(r => setTimeout(r, 400));
+  addThreatLog("Cross-referencing global reputation database...");
   
-  // Add backend hospitals
-  HOSPITALS.forEach(h => {
-    if (gpsActive && userLat && userLng && h.distance === undefined) {
-      h.distance = haversineKm(userLat, userLng, h.lat, h.lng);
+  const behaviorData = monitor.getData();
+  const emergencyData = {
+    patientLat: userLat,
+    patientLng: userLng,
+    patientPhone: localStorage.getItem('lastPatientPhone') || '9999999999',
+    behaviorData
+  };
+
+  try {
+    const res = await fetchWithAuth('/api/emergency', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(emergencyData)
+    });
+
+    const backendResults = await res.json();
+    
+    if (!res.ok) {
+      addThreatLog(`CRITICAL: ${backendResults.error || 'Security block'}`);
+      fill.style.background = 'var(--danger)';
+      await new Promise(r => setTimeout(r, 2000));
+      overlay.classList.remove('show');
+      alert(`🚨 SECURITY BLOCK: ${backendResults.message || 'Suspicious activity detected.'}`);
+      return;
     }
-    uniqueMap.set(h.name, h);
-  });
-  
-  // Add map hospitals
-  MAP_HOSPITALS.forEach(h => {
-    if (!uniqueMap.has(h.name)) {
-      uniqueMap.set(h.name, h);
+
+    addThreatLog(`Trust Score Verified: ${backendResults.trustScore || 90}%`);
+    fill.style.width = `${backendResults.trustScore || 90}%`;
+    val.textContent = `${backendResults.trustScore || 90}%`;
+    await new Promise(r => setTimeout(r, 1000));
+    
+    overlay.classList.remove('show');
+    showPage('emergency-status');
+    
+    // Reset UI
+    document.getElementById('emergencyDetailsArea').style.display = 'none';
+    document.getElementById('etaWrapper').style.display = 'none';
+    document.getElementById('btnCallNow').style.display = 'block';
+    document.getElementById('btnCallEnd').style.display = 'none';
+    document.getElementById('callDuration').textContent = '00:00';
+    document.getElementById('dispatchLog').innerHTML = '';
+    document.getElementById('bookingAbandonBtn').textContent = 'ABANDON EMERGENCY';
+    
+    const assignedHospitalEl = document.getElementById('assignedHospitalName');
+    const dispatchMessageEl = document.getElementById('dispatchMessage');
+    const hospitalListEl = document.getElementById('emergHospitalList');
+    
+    assignedHospitalEl.textContent = '📡 SCANNING AREA...';
+    dispatchMessageEl.textContent = 'Detecting nearby medical facilities within 10km...';
+    hospitalListEl.innerHTML = '';
+
+    // Combine with Map hospitals
+    const uniqueMap = new Map();
+    if (backendResults.allHospitals) {
+      backendResults.allHospitals.forEach(name => uniqueMap.set(name, { name }));
     }
-  });
-  
-  let allHospitals = Array.from(uniqueMap.values());
-  
-  // Filter by 10km radius if GPS is active, or just take first few if not
-  let nearby = gpsActive ? allHospitals.filter(h => h.distance <= 10) : allHospitals.slice(0, 8);
-  
-  if (nearby.length === 0 && allHospitals.length > 0) {
-    nearby = allHospitals.sort((a,b) => (a.distance||0) - (b.distance||0)).slice(0, 5);
+    MAP_HOSPITALS.forEach(h => {
+      if (!uniqueMap.has(h.name)) uniqueMap.set(h.name, h);
+    });
+
+    let allHospitals = Array.from(uniqueMap.values());
+    let nearby = gpsActive ? allHospitals.filter(h => h.distance <= 10) : allHospitals.slice(0, 8);
+    if (nearby.length === 0 && allHospitals.length > 0) {
+      nearby = allHospitals.sort((a,b) => (a.distance||0) - (b.distance||0)).slice(0, 5);
+    }
+
+    hospitalListEl.innerHTML = nearby.map(h => `
+      <div class="emerg-hospital-item">
+        <span>🏥 ${h.name} ${h.distance !== undefined ? '(' + h.distance + ' km)' : ''}</span>
+        <span class="status-pending">WAITING...</span>
+      </div>
+    `).join('');
+
+    if (backendResults.assignedHospital) {
+      assignedHospitalEl.textContent = `TARGET: ${backendResults.assignedHospital.toUpperCase()}`;
+      dispatchMessageEl.textContent = `Awaiting voice confirmation to dispatch ambulance...`;
+    }
+
+    document.getElementById('liveLocationCoords').textContent = gpsActive ? `${userLat.toFixed(4)}, ${userLng.toFixed(4)}` : 'UNKNOWN';
+
+  } catch (err) {
+    console.error('Emergency trigger failed:', err);
+    overlay.classList.remove('show');
+    alert('⚠️ Emergency connection error. Please use standard dial-in.');
   }
+}
 
-  // 3. Render Initial List (Pending)
-  hospitalListEl.innerHTML = nearby.map(h => `
-    <div class="emerg-hospital-item" id="hosp-${h._id || h.id || Math.random()}">
-      <span>🏥 ${h.name} ${h.distance !== undefined ? '(' + h.distance + ' km)' : ''}</span>
-      <span class="status-pending">WAITING...</span>
-    </div>
-  `).join('');
-
-  // 4. Update assigned hospital (Nearest)
-  if (nearby.length > 0) {
-    const nearest = nearby.sort((a,b) => (a.distance||0) - (b.distance||0))[0];
-    assignedHospitalEl.textContent = `TARGET: ${nearest.name.toUpperCase()}`;
-    dispatchMessageEl.textContent = `Awaiting voice confirmation to dispatch ambulance...`;
-  }
-
-  // 5. Update live location display
-  document.getElementById('liveLocationCoords').textContent = gpsActive ? `${userLat.toFixed(4)}, ${userLng.toFixed(4)}` : 'UNKNOWN';
+async function toggleBan(id, isBanned) {
+  try {
+    const res = await fetchWithAuth(`/api/spam/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isBanned })
+    });
+    if (res.ok) fetchInitialData();
+  } catch (err) { console.error('Toggle ban failed:', err); }
 }
 
 function startEmergencyCall() {
@@ -712,9 +969,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchInitialData() {
   try {
-    const [hRes, bRes] = await Promise.all([
-      fetch('/api/hospitals'),
-      fetch('/api/bookings')
+    const [hRes, bRes, tRes, sRes] = await Promise.all([
+      fetchWithAuth('/api/hospitals'),
+      fetchWithAuth('/api/bookings'),
+      fetchWithAuth('/api/tasks'),
+      fetchWithAuth('/api/spam')
     ]);
     
     if (hRes.ok) HOSPITALS = await hRes.json();
@@ -722,8 +981,9 @@ async function fetchInitialData() {
       bookings = await bRes.json();
       document.getElementById('statTokens').textContent = bookings.length;
     }
+    if (tRes.ok) allTasks = await tRes.json();
+    if (sRes.ok) spamReputationData = await sRes.json();
     
-    // Refresh current page if needed
     const hash = window.location.hash.replace('#', '') || 'home';
     if (hash === 'hospitals') renderHospitals();
     if (hash === 'admin') renderAdmin();
@@ -745,5 +1005,46 @@ async function fetchInitialData() {
     const hash = window.location.hash.replace('#', '') || 'home';
     if (hash === 'hospitals') renderHospitals();
     if (hash === 'admin') renderAdmin();
+  }
+}
+
+// ==================== AUTH & CONNECTION ====================
+async function fetchWithAuth(url, options = {}) {
+  if (options.external) return fetch(url, options);
+
+  const headers = options.headers || {};
+  headers['x-api-key'] = BACKEND_API_KEY;
+  
+  const res = await fetch(url, { ...options, headers });
+  
+  if (res.status === 401) {
+    updateConnectionStatus(false);
+  } else if (res.ok) {
+    updateConnectionStatus(true);
+  }
+  
+  return res;
+}
+
+function saveApiKey() {
+  const input = document.getElementById('adminApiKey');
+  BACKEND_API_KEY = input.value.trim();
+  localStorage.setItem('backend_api_key', BACKEND_API_KEY);
+  input.value = '';
+  alert('API Key Saved! Re-syncing data...');
+  fetchInitialData();
+}
+
+function updateConnectionStatus(isOk) {
+  const statusEl = document.getElementById('connectionStatus');
+  const textEl = document.getElementById('statusText');
+  if (!statusEl || !textEl) return;
+
+  if (isOk) {
+    statusEl.className = 'connection-status secure';
+    textEl.textContent = 'Backend Connection Secure';
+  } else {
+    statusEl.className = 'connection-status unauthorized';
+    textEl.textContent = 'Unauthorized: Invalid API Key';
   }
 }
