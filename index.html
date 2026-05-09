@@ -180,7 +180,7 @@
       <div class="section" id="homeMapMount" style="min-height: 50vh; display: flex; flex-direction: column; gap: 10px;">
         <div id="sharedMapWrapper">
           <div style="text-align:center; margin-bottom:10px;">
-            <button class="btn btn-primary" onclick="getLocation()">Find My Location</button>
+            <button class="btn btn-primary" id="homeGpsBtn" onclick="detectGPS()">Find My Location</button>
             <button class="btn btn-danger" onclick="openEmergencyModal()">🚨 Emergency Call</button>
           </div>
           <div id="map" class="hospital-map" style="height: 50vh; border-radius: 12px; border: 1px solid var(--glass-border);"></div>
@@ -264,6 +264,7 @@
           <div class="form-group">
             <label class="form-label">Health Condition / Symptoms</label>
             <textarea id="patientSymptoms" class="form-input" rows="3" placeholder="Describe your symptoms (e.g., chest pain, broken arm...)" oninput="analyzeSymptoms()"></textarea>
+
           </div>
           <div id="aiDeptWrapper" class="ai-dept-wrapper" style="display:none;">
             <div class="ai-dept-badge">

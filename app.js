@@ -14,6 +14,8 @@ let userLocationName = '';
 let gpsActive = false;
 let map = null;
 let mapMarkers = [];
+let userMarker = null;
+let userCircle = null;
 let allTasks = [];
 let BACKEND_API_KEY = localStorage.getItem('backend_api_key') || 'cyber-health-secure-2026';
 let spamReputationData = [];
@@ -130,12 +132,12 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 function detectGPS() {
-  const btn = document.getElementById('gpsBtn');
+  const btn = document.getElementById('gpsBtn') || document.getElementById('homeGpsBtn');
   if (!navigator.geolocation) {
     showGPSStatus('❌ GPS not supported', 'error'); return;
   }
-  btn.textContent = '⏳ Locating...';
-  btn.disabled = true;
+  if (btn) { btn.textContent = '⏳ Locating...'; btn.disabled = true; }
+  
   navigator.geolocation.getCurrentPosition(
     async pos => {
       userLat = pos.coords.latitude;
@@ -151,14 +153,17 @@ function detectGPS() {
       
       document.getElementById('locationSearch').value = userLocationName;
       showGPSStatus(`📍 ${userLocationName}`, 'success');
-      btn.textContent = '✅ GPS Active';
-      btn.disabled = false;
-      btn.classList.add('gps-active');
-      if (window.location.hash.includes('hospitals')) renderHospitals();
+      if (btn) {
+        btn.textContent = '✅ GPS Active';
+        btn.disabled = false;
+        btn.classList.add('gps-active');
+      }
+      
+      // Refresh map and list
+      renderHospitals();
     },
     err => {
-      btn.textContent = '📍 Use My Location';
-      btn.disabled = false;
+      if (btn) { btn.textContent = '📍 Use My Location'; btn.disabled = false; }
       showGPSStatus('❌ GPS error', 'error');
     },
     { timeout: 10000 }
@@ -388,8 +393,19 @@ function renderHospitalListOnly() {
   });
 
   if (gpsActive && userLat && userLng) {
+    if (userMarker) map.removeLayer(userMarker);
+    if (userCircle) map.removeLayer(userCircle);
+    
     map.setView([userLat, userLng], 13);
-    L.circle([userLat, userLng], { radius: 200, color: 'blue' }).addTo(map);
+    userCircle = L.circle([userLat, userLng], { radius: 200, color: 'blue' }).addTo(map);
+    userMarker = L.marker([userLat, userLng], { icon: L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    }) }).addTo(map).bindPopup("You are here");
   }
 
   grid.innerHTML = filtered.map(h => `
@@ -888,88 +904,7 @@ async function deleteTask(id) {
 // ==================== MAP & DB STUBS ====================
 // map already declared at the top
 
-function getLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(showMap);
-  } else {
-    alert("Geolocation not supported");
-  }
-}
 
-function showMap(position) {
-  const lat = position.coords.latitude;
-  const lon = position.coords.longitude;
-
-  if (map) { map.remove(); }
-  map = L.map('map').setView([lat, lon], 13);
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-  }).addTo(map);
-
-  // User marker
-  L.marker([lat, lon]).addTo(map)
-    .bindPopup("You are here")
-    .openPopup();
-
-  fetchHospitals(lat, lon);
-}
-
-function fetchHospitals(lat, lon) {
-  fetch(`https://overpass-api.de/api/interpreter?data=
-  [out:json];
-  node["amenity"="hospital"](around:5000,${lat},${lon});
-  out;
-  `)
-  .then(res => res.json())
-  .then(data => {
-    const listDiv = document.getElementById("list");
-    listDiv.innerHTML = "<h3>Hospital List</h3>";
-    MAP_HOSPITALS = []; // Reset map hospitals
-
-    data.elements.forEach(h => {
-      if(h.lat && h.lon){
-        const name = h.tags?.name || "Unnamed Hospital";
-        const dist = (userLat && userLng) ? haversineKm(userLat, userLng, h.lat, h.lon) : undefined;
-        
-        // Add to map state
-        MAP_HOSPITALS.push({
-          id: 'osm-' + h.id,
-          name: name,
-          lat: h.lat,
-          lng: h.lon,
-          distance: dist,
-          type: 'map-discovered'
-        });
-
-        // Add marker
-        L.marker([h.lat, h.lon])
-          .addTo(map)
-          .bindPopup(name);
-
-        // Add to list
-        const card = document.createElement("div");
-        card.className = "hospital-card"; 
-
-        card.innerHTML = `
-          <h4 style="margin-bottom:10px;">🏥 ${name}</h4>
-          <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:5px;">📍 Distance: ${dist !== undefined ? dist + ' km' : 'Calculating...'}</p>
-          <button class="btn btn-primary btn-sm" onclick="goToHospital(${h.lat}, ${h.lon})">
-            View on Map
-          </button>
-        `;
-
-        listDiv.appendChild(card);
-      }
-    });
-  });
-}
-
-function goToHospital(lat, lon) {
-  map.setView([lat, lon], 16);
-  const mapEl = document.getElementById('map');
-  if(mapEl) window.scrollTo({ top: mapEl.offsetTop - 100, behavior: 'smooth' });
-}
 
 function testDbConnection() {
   const status = document.getElementById('dbStatus');
