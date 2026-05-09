@@ -3,10 +3,14 @@ const router = express.Router();
 const Booking = require('../models/Booking');
 const { calculateSpamScore } = require('../../spamFilter');
 
-// Get all bookings
+// Get all bookings (optionally filtered by patientPhone)
 router.get('/', async (req, res) => {
   try {
-    const bookings = await Booking.find();
+    const filter = {};
+    if (req.query.phone) {
+      filter.patientPhone = req.query.phone;
+    }
+    const bookings = await Booking.find(filter);
     res.json(bookings);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -55,7 +59,17 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Update booking status
+// Update booking details (any field)
+router.patch('/:id', async (req, res) => {
+  try {
+    const updates = req.body; // allow any fields
+    const booking = await Booking.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    res.json(booking);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
@@ -73,6 +87,15 @@ router.delete('/:id', async (req, res) => {
     const deleted = await Booking.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Booking not found' });
     res.json({ message: 'Booking deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// Delete all bookings
+router.delete('/', async (req, res) => {
+  try {
+    await Booking.deleteMany({});
+    res.json({ message: 'All bookings deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

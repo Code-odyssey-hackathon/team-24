@@ -12,6 +12,8 @@ let userLat = null;
 let userLng = null;
 let userLocationName = '';
 let gpsActive = false;
+let map = null;
+let mapMarkers = [];
 let allTasks = [];
 let BACKEND_API_KEY = localStorage.getItem('backend_api_key') || 'cyber-health-secure-2026';
 let spamReputationData = [];
@@ -75,11 +77,34 @@ function showPage(pageId) {
       n.classList.toggle('active', n.getAttribute('data-page') === pageId);
     });
     
-    if (pageId === 'hospitals') renderHospitals();
+    const mapWrapper = document.getElementById('sharedMapWrapper');
+    
+    if (pageId === 'home') {
+      const mount = document.getElementById('homeMapMount');
+      if (mapWrapper && mount && !mount.contains(mapWrapper)) {
+        mount.appendChild(mapWrapper);
+      }
+      if (!map) renderHospitals(); // Initialize map
+      if (map) setTimeout(() => map.invalidateSize(), 100);
+    }
+
+    if (pageId === 'hospitals') {
+      const mount = document.getElementById('hospitalsMapMount');
+      if (mapWrapper && mount && !mount.contains(mapWrapper)) {
+        mount.appendChild(mapWrapper);
+      }
+      renderHospitals();
+      if (map) {
+        setTimeout(() => map.invalidateSize(), 100);
+      }
+    }
     if (pageId === 'details') renderHospitalDetails();
     if (pageId === 'booking') renderBookingPage();
     if (pageId === 'confirmation') renderConfirmation();
-    if (pageId === 'admin') renderAdmin();
+    if (pageId === 'admin') {
+      renderAdmin();
+      fetchBookings();
+    }
     
     loading.classList.remove('show');
     window.scrollTo(0, 0);
@@ -140,6 +165,100 @@ function detectGPS() {
   );
 }
 
+function analyzeSymptoms() {
+  const text = document.getElementById('patientSymptoms').value.toLowerCase();
+  const wrapper = document.getElementById('aiDeptWrapper');
+  const label = document.getElementById('aiAssignedDept');
+  const hiddenInput = document.getElementById('patientDept');
+
+  if (!text.trim()) {
+    wrapper.style.display = 'none';
+    return;
+  }
+
+  const keywords = {
+    'Cardiology': ['heart', 'chest pain', 'cardiac', 'palpitation', 'breathlessness', 'pressure'],
+    'Orthopedics': ['bone', 'fracture', 'joint', 'back pain', 'sprain', 'broken', 'muscle', 'knee'],
+    'Neurology': ['headache', 'brain', 'seizure', 'dizziness', 'paralysis', 'stroke', 'numbness'],
+    'Pediatrics': ['child', 'baby', 'infant', 'pediatric', 'vaccination'],
+    'Dermatology': ['skin', 'rash', 'itching', 'acne', 'allergy', 'mole', 'burn'],
+    'ENT': ['ear', 'nose', 'throat', 'sinus', 'hearing', 'vertigo', 'tonsil'],
+    'Gynecology': ['pregnancy', 'period', 'women', 'pelvic', 'maternity', 'fertility'],
+    'Ophthalmology': ['eye', 'vision', 'blind', 'cataract', 'blurry', 'specs'],
+    'Dentistry': ['tooth', 'gums', 'oral', 'cavity', 'dental', 'wisdom tooth'],
+    'Psychiatry': ['depression', 'anxiety', 'stress', 'mental', 'bipolar', 'sleep', 'trauma'],
+    'Gastroenterology': ['stomach', 'digestion', 'liver', 'ulcer', 'bowel', 'constipation', 'vomiting'],
+    'Oncology': ['cancer', 'tumor', 'chemo', 'radiation', 'oncology', 'biopsy'],
+    'Endocrinology': ['diabetes', 'thyroid', 'hormone', 'insulin', 'metabolism'],
+    'Pulmonology': ['lung', 'asthma', 'pneumonia', 'breathing', 'coughing blood', 'bronchitis'],
+    'Urology': ['kidney', 'bladder', 'urine', 'prostate', 'urinary'],
+    'Nephrology': ['dialysis', 'kidney failure', 'renal'],
+    'Hematology': ['blood', 'anemia', 'leukemia', 'bleeding'],
+    'General Medicine': ['fever', 'cough', 'cold', 'infection', 'pain', 'weakness', 'fatigue']
+  };
+
+  let assigned = 'General Medicine'; // Default
+  for (const [dept, words] of Object.entries(keywords)) {
+    if (words.some(w => text.includes(w))) {
+      assigned = dept;
+      break;
+    }
+  }
+
+  wrapper.style.display = 'block';
+  label.textContent = assigned.toUpperCase();
+  hiddenInput.value = assigned;
+
+  suggestBetterHospital(assigned);
+}
+
+function suggestBetterHospital(assignedDept) {
+  const suggestBox = document.getElementById('aiHospitalSuggestion');
+  const suggestText = document.getElementById('suggestionText');
+  const switchBtn = document.getElementById('btnSwitchHospital');
+  const continueBtn = document.getElementById('btnContinueHospital');
+  const select = document.getElementById('bookingHospitalSelect');
+
+  const currentHospitalName = select.value;
+  if (!currentHospitalName) {
+    suggestBox.style.display = 'none';
+    return;
+  }
+
+  const currentHosp = HOSPITALS.find(h => h.name === currentHospitalName);
+  
+  // Find all hospitals that specialize in this department
+  let experts = HOSPITALS.filter(h => 
+    h.specialty && h.specialty.toLowerCase().includes(assignedDept.toLowerCase())
+  );
+
+  // If GPS is active, sort experts by distance
+  if (gpsActive) experts.sort((a,b) => a.distance - b.distance);
+
+  const bestExpert = experts[0];
+
+  // If current hospital is already an expert or no experts found, hide suggestion
+  if (!bestExpert || (currentHosp && currentHosp.specialty && currentHosp.specialty.toLowerCase().includes(assignedDept.toLowerCase()))) {
+    suggestBox.style.display = 'none';
+    return;
+  }
+
+  // Show suggestion
+  suggestBox.style.display = 'block';
+  suggestText.innerHTML = `AI suggests <strong>${bestExpert.name}</strong> as it specializes in <strong>${assignedDept}</strong>. Would you like to switch for better specialized care?`;
+  
+  switchBtn.onclick = () => {
+    select.value = bestExpert.name;
+    // Trigger change manually to update logic
+    select.dispatchEvent(new Event('change'));
+    suggestBox.style.display = 'none';
+  };
+
+  continueBtn.onclick = () => {
+    suggestBox.style.display = 'none';
+  };
+}
+
 function showGPSStatus(msg, type) {
   let el = document.getElementById('gpsStatus');
   if (!el) return;
@@ -182,28 +301,104 @@ function renderHospitals() {
   const typeFilter = document.getElementById('filterType').value;
   const distFilter = document.getElementById('filterDistance').value;
   const specFilter = document.getElementById('filterSpecialty').value;
-  const locationLabel = document.getElementById('gpsLocationLabel');
   
-  if (locationLabel) locationLabel.textContent = (gpsActive && userLocationName) ? `📍 Near: ${userLocationName}` : '';
+  // Initialize Map if not exists
+  if (!map) {
+    const startLat = userLat || 28.6139;
+    const startLng = userLng || 77.2090;
+    map = L.map('map').setView([startLat, startLng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    map.on('moveend', searchHospitalsOnMap);
+  }
 
-  let list = [...HOSPITALS];
-  if (gpsActive) list.sort((a, b) => a.distance - b.distance);
+  searchHospitalsOnMap();
+}
 
-  let filtered = list.filter(h => {
+async function searchHospitalsOnMap() {
+  if (!map) return;
+  const bounds = map.getBounds();
+  const south = bounds.getSouth();
+  const west = bounds.getWest();
+  const north = bounds.getNorth();
+  const east = bounds.getEast();
+
+  const query = `[out:json];node["amenity"="hospital"](${south},${west},${north},${east});out;`;
+  const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    MAP_HOSPITALS = data.elements.map(el => ({
+      id: el.id,
+      name: el.tags.name || 'Local Hospital',
+      lat: el.lat,
+      lng: el.lon,
+      type: 'private',
+      specialty: 'General Medicine',
+      distance: userLat ? haversineKm(userLat, userLng, el.lat, el.lon) : 0,
+      beds: 50,
+      bedsAvail: 10,
+      emergency: true,
+      phone: el.tags.phone || 'N/A',
+      doctors: [{ name: 'On-Call Doctor', spec: 'Emergency' }]
+    }));
+    
+    // Trigger re-render without re-initializing map
+    renderHospitalListOnly(); 
+  } catch (err) {
+    console.warn('Map search failed:', err);
+  }
+}
+
+function renderHospitalListOnly() {
+  const grid = document.getElementById('hospitalGrid');
+  const typeFilter = document.getElementById('filterType').value;
+  const specFilter = document.getElementById('filterSpecialty').value;
+
+  // Union of DB hospitals and Map hospitals
+  const allHospitals = [...HOSPITALS];
+  MAP_HOSPITALS.forEach(mh => {
+    if (!allHospitals.find(h => h.name === mh.name)) {
+      allHospitals.push(mh);
+    }
+  });
+
+  let filtered = allHospitals.filter(h => {
     if (typeFilter !== 'all' && h.type !== typeFilter) return false;
-    if (distFilter !== 'all' && h.distance > Number(distFilter)) return false;
-    if (specFilter !== 'all' && h.specialty !== specFilter) return false;
+    if (specFilter !== 'all' && (!h.specialty || !h.specialty.toLowerCase().includes(specFilter.toLowerCase()))) return false;
+    
+    // 10KM Range Filter (only if GPS is active)
+    if (gpsActive && h.distance > 10) return false;
+
+    // ONLY show hospitals visible in the current map viewport
+    if (!h.lat || !h.lng) return false;
+    if (map && !map.getBounds().contains(L.latLng(h.lat, h.lng))) return false;
+
     return true;
   });
+
+  // Update Markers
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
+  
+  filtered.forEach(h => {
+    const marker = L.marker([h.lat, h.lng]).addTo(map)
+      .bindPopup(`<b>${h.name}</b><br>${h.type || 'General'}<br><button class="btn btn-sm" onclick="selectedHospitalId='${h.id || h._id}';window.location.hash='#details'">Details</button>`);
+    mapMarkers.push(marker);
+  });
+
+  if (gpsActive && userLat && userLng) {
+    map.setView([userLat, userLng], 13);
+    L.circle([userLat, userLng], { radius: 200, color: 'blue' }).addTo(map);
+  }
 
   grid.innerHTML = filtered.map(h => `
     <div class="hospital-card">
       <div class="hospital-card-header">
-        <span class="hospital-card-name">🏥 ${h.name}</span>
+        <span class="hospital-card-name">🏥 ${h.name} (${h.distance || '0'} km)</span>
         <span class="hospital-card-type ${h.type === 'government' ? 'type-gov' : 'type-private'}">${h.type === 'government' ? t('filterGov') : t('filterPrivate')}</span>
       </div>
       <div class="hospital-card-info">
-        <div class="hospital-card-row"><span>📍</span><span>${t('distance')}: ${h.distance} km</span></div>
         <div class="hospital-card-row"><span>🛏️</span><span>${t('bedsAvail')}: ${h.bedsAvail} / ${h.beds}</span></div>
         <div class="hospital-card-row">
           <span class="emergency-badge ${h.emergency ? 'emergency-yes' : 'emergency-no'}">
@@ -211,14 +406,18 @@ function renderHospitals() {
           </span>
         </div>
       </div>
-      <button class="btn btn-primary btn-full" onclick="selectedHospitalId=${h.id};window.location.hash='#details'">${t('viewDetails')}</button>
+      <button class="btn btn-primary btn-full" onclick="selectedHospitalId='${h.id || h._id}';window.location.hash='#details'">${t('viewDetails')}</button>
     </div>
   `).join('');
 }
 
 // ==================== DETAILS ====================
 function renderHospitalDetails() {
-  const h = HOSPITALS.find(x => x.id === selectedHospitalId);
+  const allHospitals = [...HOSPITALS];
+  MAP_HOSPITALS.forEach(mh => {
+    if (!allHospitals.find(h => h.name === mh.name)) allHospitals.push(mh);
+  });
+  const h = allHospitals.find(x => x.id == selectedHospitalId || x._id == selectedHospitalId);
   if (!h) return;
   const container = document.getElementById('hospitalDetailsContent');
   container.innerHTML = `
@@ -236,7 +435,7 @@ function renderHospitalDetails() {
       ${h.doctors.map(d => `<div class="doctor-card"><div class="doctor-avatar">👨⚕️</div><div class="doctor-info"><h4>${d.name}</h4><p>${d.spec}</p></div></div>`).join('')}
     </div>
     <div class="detail-actions">
-      <button class="btn btn-primary" onclick="selectedHospitalId=${h.id};window.location.hash='#booking'">🎫 ${t('bookTokenBtn')}</button>
+      <button class="btn btn-primary" onclick="selectedHospitalId='${h.id || h._id}';window.location.hash='#booking'">🎫 ${t('bookTokenBtn')}</button>
       <button class="btn btn-success" onclick="window.open('tel:${h.phone}')">📞 ${t('callHospital')}</button>
       <button class="btn btn-danger" onclick="window.open('tel:108')">${t('emergencyCall')}</button>
     </div>
@@ -287,7 +486,7 @@ async function handleBooking(e) {
   e.preventDefault();
   const name = document.getElementById('patientName').value;
   const phone = document.getElementById('patientPhone').value;
-  const dept = document.getElementById('patientDept').value;
+  const dept = document.getElementById('patientDept').value || 'General Medicine';
   const hospitalName = document.getElementById('bookingHospitalSelect').value;
 
   const bookingData = {
@@ -421,15 +620,28 @@ function renderAdminTab(tab) {
   } else if (tab === 'bookings') {
     container.innerHTML = bookings.length === 0
       ? '<p style="text-align:center;color:var(--text-muted);padding:32px;">No bookings yet.</p>'
-      : `<div class="admin-table-wrapper"><table class="admin-table">
+      : `<button class="btn btn-danger" style="margin-bottom: 15px;" onclick="clearAllBookings()">⚠️ Clear All Bookings</button>
+         <div class="admin-table-wrapper"><table class="admin-table">
           <thead><tr><th>${t('token')}</th><th>${t('patientName')}</th><th>${t('hospitalName')}</th><th>${t('department')}</th><th>Actions</th></tr></thead>
-          <tbody>${bookings.map(b => `<tr>
+          <tbody>${bookings.map(b => `<tr id="booking-row-${b._id}">
             <td>${b.tokenNum || 'N/A'}</td>
-            <td>${b.patientName || 'Anonymous'}</td>
-            <td>${b.hospitalName || 'N/A'}</td>
-            <td>${b.patientDept || 'General'}</td>
             <td>
-              <button class="btn btn-sm btn-danger" onclick="deleteBooking('${b._id}')">🗑️</button>
+              <span class="view-mode">${b.patientName || 'Anonymous'}</span>
+              <input type="text" class="edit-mode form-input" style="display:none;width:90%;padding:4px;" value="${b.patientName || ''}">
+            </td>
+            <td>
+              <span class="view-mode">${b.hospitalName || 'N/A'}</span>
+              <input type="text" class="edit-mode form-input" style="display:none;width:90%;padding:4px;" value="${b.hospitalName || ''}">
+            </td>
+            <td>
+              <span class="view-mode">${b.patientDept || 'General'}</span>
+              <input type="text" class="edit-mode form-input" style="display:none;width:90%;padding:4px;" value="${b.patientDept || ''}">
+            </td>
+            <td>
+              <button class="btn btn-sm btn-outline view-mode" onclick="editBookingUI('${b._id}')">✏️</button>
+              <button class="btn btn-sm btn-danger view-mode" onclick="deleteBooking('${b._id}')">🗑️</button>
+              <button class="btn btn-sm btn-primary edit-mode" style="display:none;" onclick="saveBooking('${b._id}')">💾</button>
+              <button class="btn btn-sm btn-outline edit-mode" style="display:none;" onclick="cancelEditBooking('${b._id}')">❌</button>
             </td>
           </tr>`).join('')}</tbody>
         </table></div>`;
@@ -553,6 +765,86 @@ async function deleteBooking(id) {
   } catch (err) { console.error('Delete failed:', err); }
 }
 
+async function clearAllBookings() {
+  if (!confirm('WARNING: Are you sure you want to delete ALL bookings? This cannot be undone.')) return;
+  try {
+    const res = await fetchWithAuth('/api/bookings', { method: 'DELETE' });
+    if (res.ok) {
+      bookings = [];
+      const statTokens = document.getElementById('statTokens');
+      if (statTokens) statTokens.textContent = bookings.length;
+      renderAdmin();
+      renderAdminTab('bookings');
+    } else {
+      alert('Failed to clear bookings');
+    }
+  } catch (err) {
+    console.error('Failed to clear bookings:', err);
+  }
+}
+
+async function fetchBookings() {
+  try {
+    const res = await fetchWithAuth('/api/bookings');
+    if (res.ok) {
+      bookings = await res.json();
+      const statTokens = document.getElementById('statTokens');
+      if (statTokens) statTokens.textContent = bookings.length;
+      
+      const activeTab = document.querySelector('.tab-btn.active');
+      if (activeTab && activeTab.getAttribute('data-tab') === 'bookings') {
+        renderAdminTab('bookings');
+      }
+      
+      // Update stats if admin is open
+      const pageAdmin = document.getElementById('page-admin');
+      if (pageAdmin && pageAdmin.classList.contains('active')) {
+        renderAdmin();
+      }
+    }
+  } catch (err) {
+    console.error('Failed to fetch bookings:', err);
+  }
+}
+
+function editBookingUI(id) {
+  const row = document.getElementById(`booking-row-${id}`);
+  if (!row) return;
+  row.querySelectorAll('.view-mode').forEach(el => el.style.display = 'none');
+  row.querySelectorAll('.edit-mode').forEach(el => el.style.display = 'inline-block');
+}
+
+function cancelEditBooking(id) {
+  const row = document.getElementById(`booking-row-${id}`);
+  if (!row) return;
+  row.querySelectorAll('.edit-mode').forEach(el => el.style.display = 'none');
+  row.querySelectorAll('.view-mode').forEach(el => el.style.display = 'inline-block');
+}
+
+async function saveBooking(id) {
+  const row = document.getElementById(`booking-row-${id}`);
+  if (!row) return;
+  const inputs = row.querySelectorAll('input.edit-mode');
+  const patientName = inputs[0].value;
+  const hospitalName = inputs[1].value;
+  const patientDept = inputs[2].value;
+
+  try {
+    const res = await fetchWithAuth(`/api/bookings/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patientName, hospitalName, patientDept })
+    });
+    if (res.ok) {
+      fetchBookings(); // Refresh UI
+    } else {
+      alert('Failed to update booking');
+    }
+  } catch (err) {
+    console.error('Update failed:', err);
+  }
+}
+
 async function createTask() {
   const title = document.getElementById('taskTitle').value;
   const description = document.getElementById('taskDesc').value;
@@ -594,7 +886,7 @@ async function deleteTask(id) {
 }
 
 // ==================== MAP & DB STUBS ====================
-let map;
+// map already declared at the top
 
 function getLocation() {
   if (navigator.geolocation) {
@@ -953,6 +1245,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('bookingForm').addEventListener('submit', handleBooking);
+  document.getElementById('bookingHospitalSelect').addEventListener('change', () => {
+    const assigned = document.getElementById('patientDept').value;
+    if (assigned) suggestBetterHospital(assigned);
+  });
   document.getElementById('downloadTokenBtn').addEventListener('click', downloadToken);
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -992,14 +1288,16 @@ async function fetchInitialData() {
     console.warn('Initial data fetch failed:', err);
     // Use fallback mock data if necessary
     if (HOSPITALS.length === 0) {
-      HOSPITALS = [
-        { id:1, name:"City General Hospital", type:"government", distance:2.3, lat:28.6448, lng:77.2167, beds:120, bedsAvail:34, emergency:true, phone:"011-2345678", specialty:"general", doctors:[{name:"Dr. Priya Sharma",spec:"General Medicine"},{name:"Dr. Raj Patel",spec:"Cardiology"}] },
-        { id:2, name:"Apollo Care Center", type:"private", distance:4.1, lat:28.6280, lng:77.2090, beds:200, bedsAvail:67, emergency:true, phone:"011-8765432", specialty:"cardiology", doctors:[{name:"Dr. Suresh Kumar",spec:"Cardiology"},{name:"Dr. Meena Iyer",spec:"Neurology"}] },
-        { id:3, name:"District Community Hospital", type:"government", distance:6.7, lat:28.6560, lng:77.2410, beds:80, bedsAvail:12, emergency:true, phone:"011-5556789", specialty:"general", doctors:[{name:"Dr. Vikram Singh",spec:"Orthopedics"}] },
-        { id:4, name:"Sunrise Private Hospital", type:"private", distance:3.5, lat:28.6350, lng:77.2250, beds:150, bedsAvail:45, emergency:false, phone:"011-9998877", specialty:"orthopedics", doctors:[{name:"Dr. Neha Gupta",spec:"Orthopedics"}] },
-        { id:5, name:"Rural Health Center", type:"government", distance:12.0, lat:28.5830, lng:77.1760, beds:30, bedsAvail:8, emergency:true, phone:"011-1112233", specialty:"general", doctors:[{name:"Dr. Sita Ram",spec:"General Medicine"}] },
-        { id:6, name:"Max Super Specialty", type:"private", distance:8.2, lat:28.6692, lng:77.2300, beds:350, bedsAvail:102, emergency:true, phone:"011-7776655", specialty:"neurology", doctors:[{name:"Dr. Amit Khanna",spec:"Neurology"}] }
-      ];
+        HOSPITALS = [
+          { id:1, name:"City General Hospital", type:"government", distance:2.3, lat:28.6448, lng:77.2167, beds:120, bedsAvail:34, emergency:true, phone:"011-2345678", specialty:"General Medicine, Pediatrics", doctors:[{name:"Dr. Priya Sharma",spec:"General Medicine"}] },
+          { id:2, name:"Apollo Care Center", type:"private", distance:4.1, lat:28.6280, lng:77.2090, beds:200, bedsAvail:67, emergency:true, phone:"011-8765432", specialty:"Cardiology, Neurology, Oncology", doctors:[{name:"Dr. Suresh Kumar",spec:"Cardiology"}] },
+          { id:3, name:"Fortis Heart Institute", type:"private", distance:5.5, lat:28.6100, lng:77.2300, beds:150, bedsAvail:45, emergency:true, phone:"011-5550000", specialty:"Cardiology, Pulmonology", doctors:[{name:"Dr. Heart",spec:"Cardiology"}] },
+          { id:4, name:"Sunrise Vision Clinic", type:"private", distance:3.5, lat:28.6350, lng:77.2250, beds:50, bedsAvail:25, emergency:false, phone:"011-9998877", specialty:"Ophthalmology", doctors:[{name:"Dr. Vision",spec:"Ophthalmology"}] },
+          { id:5, name:"Dental Excellence", type:"private", distance:1.2, lat:28.6400, lng:77.2100, beds:10, bedsAvail:5, emergency:false, phone:"011-1110000", specialty:"Dentistry", doctors:[{name:"Dr. Smile",spec:"Dentistry"}] },
+          { id:6, name:"Neuro & Psych Center", type:"private", distance:8.2, lat:28.6692, lng:77.2300, beds:80, bedsAvail:20, emergency:true, phone:"011-7776655", specialty:"Neurology, Psychiatry", doctors:[{name:"Dr. Mind",spec:"Psychiatry"}] },
+          { id:7, name:"Mother & Child Care", type:"private", distance:6.0, lat:28.6000, lng:77.2000, beds:100, bedsAvail:40, emergency:true, phone:"011-8889999", specialty:"Gynecology, Pediatrics", doctors:[{name:"Dr. Mother",spec:"Gynecology"}] },
+          { id:8, name:"Digestive Health Clinic", type:"private", distance:4.5, lat:28.6200, lng:77.2400, beds:30, bedsAvail:10, emergency:false, phone:"011-2223333", specialty:"Gastroenterology", doctors:[{name:"Dr. Gut",spec:"Gastroenterology"}] }
+        ];
     }
     // Refresh current page even on failure
     const hash = window.location.hash.replace('#', '') || 'home';
