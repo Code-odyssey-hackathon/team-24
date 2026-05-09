@@ -10,10 +10,20 @@ async function calculateSpamScore(data) {
     let score = 70; // Baseline
     let reasons = [];
 
-    // 1. Reputation Check (DB Persistent)
-    let reputation = await SpamReputation.findOne({ phoneNumber: patientPhone });
-    if (!reputation) {
-        reputation = new SpamReputation({ phoneNumber: patientPhone });
+    // 1. Reputation Check (DB Persistent with Fail-Safe)
+    let reputation = { trustScore: 70, isBanned: false }; 
+    try {
+        const dbReputation = await SpamReputation.findOne({ phoneNumber: patientPhone }).maxTimeMS(2000);
+        if (dbReputation) {
+            reputation = dbReputation;
+        } else {
+            // Create new record but don't block the request if it fails
+            const newRep = new SpamReputation({ phoneNumber: patientPhone });
+            newRep.save().catch(() => {}); 
+            reputation = newRep;
+        }
+    } catch (err) {
+        console.warn('Spam DB timeout/error - using baseline trust:', err.message);
     }
 
     if (reputation.isBanned) {
@@ -62,10 +72,12 @@ async function calculateSpamScore(data) {
     const isSpam = score <= 30;
 
     // Update reputation in background (don't wait)
-    reputation.totalRequests += 1;
-    reputation.lastRequestDate = now;
-    reputation.trustScore = Math.round((reputation.trustScore * 0.8) + (score * 0.2)); // Moving average
-    reputation.save().catch(err => console.error('Reputation save failed:', err));
+    if (reputation.save) {
+        reputation.totalRequests += 1;
+        reputation.lastRequestDate = now;
+        reputation.trustScore = Math.round((reputation.trustScore * 0.8) + (score * 0.2)); // Moving average
+        reputation.save().catch(err => console.error('Reputation save failed:', err));
+    }
 
     return {
         score,
