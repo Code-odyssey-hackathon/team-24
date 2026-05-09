@@ -1,6 +1,9 @@
 {
   "name": "smart-healthcare-access",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "description": "Smart Healthcare Access System prototype",
   "main": "app.js",
   "scripts": {
