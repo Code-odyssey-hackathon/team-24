@@ -25,20 +25,20 @@ async function calculateSpamScore(data) {
 
     // 2. Urgency Bonus
     if (isEmergency || patientDept === 'EMERGENCY') {
-        score += 50; 
+        score += 80; // Significant boost for emergencies
         reasons.push("Emergency Priority");
     }
 
     // 3. Behavioral Analysis (Frontend Data)
     if (behaviorData) {
         // Example: Rapid clicks detection
-        if (behaviorData.clickSpeed > 5) { // more than 5 clicks/sec
-            score -= 60;
-            reasons.push("Bot-like rapid interaction detected");
+        if (behaviorData.clickSpeed > 10) { // increased threshold from 5 to 10
+            score -= 30; // reduced penalty from 60 to 30
+            reasons.push("Rapid interaction detected");
         }
         if (behaviorData.isAutomated) {
-            score -= 100;
-            reasons.push("Automated script detected");
+            score -= 50; // reduced penalty from 100 to 50
+            reasons.push("Automated script suspected");
         }
     }
 

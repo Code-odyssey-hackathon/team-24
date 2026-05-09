@@ -34,7 +34,7 @@ class BehaviorMonitor {
   getData() {
     return {
       clickSpeed: this.clickTimes.length,
-      isAutomated: this.isAutomated || (window.navigator.webdriver)
+      isAutomated: this.isAutomated
     };
   }
 }
