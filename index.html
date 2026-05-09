@@ -438,7 +438,7 @@
   </main>
 
   <!-- ===== EMERGENCY FAB ===== -->
-  <button class="emergency-fab" id="emergencyFab" title="Emergency Help">
+  <button class="emergency-fab" id="emergencyFab" title="Emergency Help" onclick="openEmergencyModal()">
     <span class="fab-icon">🚨</span>
     <span class="fab-label" data-i18n="emergencyHelp">Emergency Help</span>
   </button>
@@ -446,7 +446,7 @@
   <!-- ===== EMERGENCY MODAL ===== -->
   <div class="modal-overlay" id="emergencyModal">
     <div class="modal-box emergency-modal">
-      <button class="modal-close" id="emergencyModalClose">✕</button>
+      <button class="modal-close" id="emergencyModalClose" onclick="closeEmergencyModal()">✕</button>
       <div class="modal-emerg-icon">🚨</div>
       <h2 data-i18n="emergencyServices">Emergency Services</h2>
       <p class="modal-emerg-note" data-i18n="emergencyNote">Stay calm. Help is on the way.</p>
